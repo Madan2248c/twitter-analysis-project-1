@@ -1,0 +1,46 @@
+# Core Data Science Libraries
+pandas>=1.5.0
+numpy>=1.21.0
+scipy>=1.9.0
+
+# Network Analysis
+networkx>=2.8
+python-louvain>=0.16
+
+# Sentiment Analysis
+vaderSentiment>=3.3.2
+
+# Visualization Libraries
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.10.0
+
+# Interactive Widgets (for Jupyter)
+ipywidgets>=7.7.0
+
+# Jupyter Notebook
+jupyter>=1.0.0
+notebook>=6.4.0
+ipykernel>=6.15.0
+
+# Progress Bars
+tqdm>=4.64.0
+
+# Date/Time Processing
+python-dateutil>=2.8.0
+
+# File I/O
+openpyxl>=3.0.0
+
+# Optional: Web Framework for Dashboard
+streamlit>=1.10.0
+
+# Optional: Additional Network Analysis
+community>=1.0.0b1
+python-igraph>=0.9.0
+
+# Optional: Performance Enhancement
+numba>=0.56.0
+
+# Testing (optional)
+pytest>=7.0.0
