@@ -71,7 +71,7 @@ class TemporalGraphBuilder:
         if not self.interactions:
             return {}
         
-        # Get time range
+        # Get time range from actual interaction timestamps
         timestamps = [interaction['timestamp'] for interaction in self.interactions if interaction['timestamp']]
         if not timestamps:
             return {}
@@ -79,43 +79,86 @@ class TemporalGraphBuilder:
         start_time = min(timestamps)
         end_time = max(timestamps)
         
-        # Determine interval delta
+        print(f"Creating temporal snapshots from {start_time} to {end_time}")
+        
+        # FIX: For daily intervals, group by actual calendar days
         if interval == 'daily':
-            delta = timedelta(days=1)
-        elif interval == 'weekly':
-            delta = timedelta(weeks=1)
-        elif interval == 'hourly':
-            delta = timedelta(hours=1)
+            # Group interactions by calendar day
+            daily_groups = defaultdict(list)
+            
+            for interaction in self.interactions:
+                if interaction['timestamp']:
+                    # Use actual date as key (without time component)
+                    date_key = interaction['timestamp'].strftime('%Y-%m-%d')
+                    daily_groups[date_key].append(interaction)
+            
+            print(f"Found {len(daily_groups)} unique days in data")
+            
+            # Create snapshots for each day
+            temporal_graphs = {}
+            for date_key, day_interactions in daily_groups.items():
+                if day_interactions:
+                    # Get the actual time range for this day
+                    day_timestamps = [i['timestamp'] for i in day_interactions]
+                    day_start = min(day_timestamps)
+                    day_end = max(day_timestamps)
+                    
+                    # Create snapshot for this day
+                    snapshot = self._create_snapshot_graph(day_interactions, day_start, day_end)
+                    temporal_graphs[date_key] = snapshot  # Use simple date as key
+                    
+                    # Show time diversity for verification
+                    day_hours = [i['timestamp'].hour for i in day_interactions]
+                    unique_hours = sorted(set(day_hours))
+                    print(f"  {date_key}: {len(day_interactions)} interactions, hours: {unique_hours[:10]}...")
+            
+            self.temporal_graphs = temporal_graphs
+            return temporal_graphs
+        
+        # ORIGINAL CODE for non-daily intervals (weekly, hourly)
         else:
-            delta = timedelta(days=1)
-        
-        # Create time intervals
-        current_time = start_time
-        intervals = []
-        while current_time <= end_time:
-            intervals.append(current_time)
-            current_time += delta
-        
-        self.time_intervals = intervals
-        
-        # Create snapshot for each interval
-        for i, interval_start in enumerate(intervals[:-1]):
-            interval_end = intervals[i + 1]
-            interval_key = interval_start.strftime('%Y-%m-%d_%H-%M')
+            # Determine interval delta
+            if interval == 'weekly':
+                delta = timedelta(weeks=1)
+            elif interval == 'hourly':
+                delta = timedelta(hours=1)
+            else:
+                delta = timedelta(days=1)
             
-            # Filter interactions for this time window
-            interval_interactions = [
-                interaction for interaction in self.interactions
-                if interaction['timestamp'] and 
-                interval_start <= interaction['timestamp'] < interval_end
-            ]
+            # Create time intervals
+            current_time = start_time.replace(hour=0, minute=0, second=0, microsecond=0)  # Start at midnight
+            intervals = []
+            while current_time <= end_time:
+                intervals.append(current_time)
+                current_time += delta
             
-            if interval_interactions:
-                snapshot = self._create_snapshot_graph(interval_interactions, interval_start, interval_end)
-                self.temporal_graphs[interval_key] = snapshot
-        
-        print(f"Created {len(self.temporal_graphs)} temporal snapshots")
-        return self.temporal_graphs
+            self.time_intervals = intervals
+            
+            # Create snapshot for each interval
+            temporal_graphs = {}
+            for i, interval_start in enumerate(intervals[:-1]):
+                interval_end = intervals[i + 1]
+                
+                # FIX: Use appropriate key format based on interval
+                if interval == 'hourly':
+                    interval_key = interval_start.strftime('%Y-%m-%d_%H:00')
+                else:
+                    interval_key = interval_start.strftime('%Y-%m-%d')  # Just date for daily/weekly
+                
+                # Filter interactions for this time window
+                interval_interactions = [
+                    interaction for interaction in self.interactions
+                    if interaction['timestamp'] and 
+                    interval_start <= interaction['timestamp'] < interval_end
+                ]
+                
+                if interval_interactions:
+                    snapshot = self._create_snapshot_graph(interval_interactions, interval_start, interval_end)
+                    temporal_graphs[interval_key] = snapshot
+            
+            self.temporal_graphs = temporal_graphs
+            print(f"Created {len(temporal_graphs)} temporal snapshots")
+            return temporal_graphs
     
     def _create_snapshot_graph(self, interactions: List[Dict], start_time: datetime, end_time: datetime) -> nx.DiGraph:
         """Create a graph snapshot for a specific time interval."""
@@ -289,7 +332,7 @@ class TemporalGraphBuilder:
         stats = {
             'nodes': graph.number_of_nodes(),
             'edges': graph.number_of_edges(),
-            'density': nx.density(graph),
+            # 'density': nx.density(graph),
             'average_clustering': nx.average_clustering(graph.to_undirected()),
         }
         

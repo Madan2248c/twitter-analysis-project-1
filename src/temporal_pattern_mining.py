@@ -66,6 +66,9 @@ class TemporalPatternMiner:
         
         print(f"Processing {len(self.temporal_graphs)} temporal snapshots...")
         
+        # Calculate max edges globally first
+        max_edges_global = max(graph.number_of_edges() for graph in self.temporal_graphs.values())
+        
         for timestamp, graph in self.temporal_graphs.items():
             # Parse timestamp safely
             dt = self._parse_timestamp(timestamp)
@@ -149,23 +152,54 @@ class TemporalPatternMiner:
                 'network_efficiency': largest_component_size / n_nodes if n_nodes > 0 else 0
             }
             
+            # CORRECTED dissemination score calculation
+            dissemination_score = self.calculate_dissemination_score_corrected(graph, max_edges_global)
+            
+            feature_dict['dissemination_score'] = dissemination_score
+            
             temporal_features.append(feature_dict)
         
         df = pd.DataFrame(temporal_features)
         
-        # Add dissemination score
-        if not df.empty:
-            # Normalize edges for score calculation
-            max_edges = df['n_edges'].max() if df['n_edges'].max() > 0 else 1
-            
-            df['dissemination_score'] = (
-                df['density'] * 0.3 +
-                df['avg_clustering'] * 0.25 +
-                (1 - df['centralization']) * 0.2 +  # Lower centralization = better spread
-                (df['n_edges'] / max_edges) * 0.25  # Normalized activity
-            )
-        
         return df
+    
+    def calculate_dissemination_score_corrected(self, graph, max_edges_global):
+        """Use the exact formula from the research paper"""
+        if graph.number_of_nodes() < 2:
+            return 0
+        
+        # Calculate all required components
+        density = nx.density(graph)
+        clustering = nx.average_clustering(graph.to_undirected())
+        
+        # Degree centralization
+        degrees = dict(graph.degree())
+        if degrees and graph.number_of_nodes() > 2:
+            max_degree = max(degrees.values())
+            n = graph.number_of_nodes()
+            centralization = sum(max_degree - deg for deg in degrees.values()) / ((n-1)*(n-2))
+        else:
+            centralization = 0
+        
+        # Network efficiency
+        try:
+            efficiency = nx.global_efficiency(graph.to_undirected())
+        except:
+            efficiency = 0
+        
+        # Normalized edge count
+        edge_ratio = graph.number_of_edges() / max(max_edges_global, 1)
+        
+        # Apply exact paper formula
+        score = (
+            0.25 * density +                    # α₁ = 0.25
+            0.20 * clustering +                 # α₂ = 0.20
+            0.25 * (1 - centralization) +      # α₃ = 0.25
+            0.15 * efficiency +                 # α₄ = 0.15
+            0.15 * edge_ratio                   # α₅ = 0.15
+        )
+        
+        return score
     
     def _calculate_centralization(self, centrality_dict):
         """Calculate network centralization index"""
@@ -444,7 +478,7 @@ class TemporalPatternMiner:
             print("⚠️ No temporal features available for analysis")
             return {
                 'analysis_period': {},
-                'hourly_patterns': {},
+                # 'hourly_patterns': {},
                 'daily_patterns': {},
                 'network_clusters': {},
                 'dissemination_predictions': {},
@@ -453,7 +487,7 @@ class TemporalPatternMiner:
             }
         
         # Run all analyses
-        hourly_patterns = self.identify_hourly_patterns(features_df)
+        # hourly_patterns = self.identify_hourly_patterns(features_df)
         daily_patterns = self.identify_daily_patterns(features_df)
         clusters = self.cluster_network_states(features_df)
         predictions = self.predict_optimal_dissemination_times(features_df)
@@ -466,12 +500,11 @@ class TemporalPatternMiner:
                 'duration_days': (features_df['datetime'].max() - features_df['datetime'].min()).days,
                 'total_snapshots': len(features_df)
             },
-            'hourly_patterns': hourly_patterns,
+            # 'hourly_patterns': hourly_patterns,
             'daily_patterns': daily_patterns,
             'network_clusters': clusters,
             'dissemination_predictions': predictions,
             'recurring_patterns': recurring,
-            'key_insights': self._generate_key_insights(features_df, hourly_patterns, daily_patterns, predictions)
         }
         
         return report
